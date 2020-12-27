@@ -71,6 +71,13 @@ class DBImpl : public DB {
   // bytes.
   void RecordReadSample(Slice key);
 
+  int GetWriterSize(){
+    mutex_.Lock();
+    int size = writers_.size();
+    mutex_.Unlock();
+    return size;
+  }
+
  private:
   friend class DB;
   struct CompactionState;

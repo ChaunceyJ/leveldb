@@ -6,6 +6,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
+#include <db/db_impl.h>
 
 #include "leveldb/cache.h"
 #include "leveldb/db.h"
@@ -111,6 +113,8 @@ static bool FLAGS_reuse_logs = false;
 
 // Use the db with the following name.
 static const char* FLAGS_db = nullptr;
+
+static bool FLAGS_finsh_testing = false;
 
 namespace leveldb {
 
@@ -270,12 +274,20 @@ class Stats {
     std::fprintf(stdout, "%-12s : %11.3f micros/op;%s%s\n",
                  name.ToString().c_str(), seconds_ * 1e6 / done_,
                  (extra.empty() ? "" : " "), extra.c_str());
+    std::fprintf(stdout, "first time: %.1f s\n", start_ * 1e-6);
     if (FLAGS_histogram) {
       std::fprintf(stdout, "Microseconds per op:\n%s\n",
                    hist_.ToString().c_str());
     }
     std::fflush(stdout);
   }
+
+  int64_t tempBytes_;
+
+  double GetStartTime(){
+    return start_;
+  }
+
 };
 
 // State shared by all concurrent executions of the same benchmark.
@@ -582,6 +594,18 @@ class Benchmark {
     }
   }
 
+  struct CountThreadArg {
+      ThreadArg* threads;
+      int sizeOfThreads;
+      DBImpl* db;
+
+      CountThreadArg(ThreadArg* ths, int n, DB* db_){
+        this->threads = ths;
+        this->sizeOfThreads = n;
+        this->db = static_cast<DBImpl*>(db_);
+      };
+  };
+
   void RunBenchmark(int n, Slice name,
                     void (Benchmark::*method)(ThreadState*)) {
     SharedState shared(n);
@@ -603,11 +627,14 @@ class Benchmark {
 
     shared.start = true;
     shared.cv.SignalAll();
+    CountThreadArg cta(arg, n, db_);
+    std::thread count_thread(CountPerf, cta);
     while (shared.num_done < n) {
       shared.cv.Wait();
     }
     shared.mu.Unlock();
-
+    FLAGS_finsh_testing = true;
+    count_thread.join();
     for (int i = 1; i < n; i++) {
       arg[0].thread->stats.Merge(arg[i].thread->stats);
     }
@@ -617,6 +644,29 @@ class Benchmark {
       delete arg[i].thread;
     }
     delete[] arg;
+  }
+
+  static void CountPerf(CountThreadArg arg){
+    int64_t lastBytes = 0;
+    double lastTime = 0;
+    while (true){
+      int64_t nowBytes = 0;
+      for (int i = 0; i < arg.sizeOfThreads; ++i) {
+        nowBytes += arg.threads[i].thread->stats.tempBytes_;
+      }
+      double now = g_env->NowMicros();
+      std::fprintf(stdout, "time: %.1f s %6.1f MB/s writer: %d\n", now * 1e-6,
+                   (nowBytes - lastBytes) / 1048576.0 / ((now - lastTime) * 1e-6),
+                   arg.db -> GetWriterSize());
+      lastTime = now;
+      lastBytes = nowBytes;
+      if (FLAGS_finsh_testing){
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000 * 1));
+    }
+    std::cout << "exit countPerf" << std::endl;
+    std::cout.flush();
   }
 
   void Crc32c(ThreadState* thread) {
@@ -735,6 +785,7 @@ class Benchmark {
         std::snprintf(key, sizeof(key), "%016d", k);
         batch.Put(key, gen.Generate(value_size_));
         bytes += value_size_ + strlen(key);
+        thread->stats.tempBytes_ = bytes;
         thread->stats.FinishedSingleOp();
       }
       s = db_->Write(write_options_, &batch);

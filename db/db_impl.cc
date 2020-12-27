@@ -542,6 +542,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 }
 
 void DBImpl::CompactMemTable() {
+  double startTime = env_->NowMicros() * 1e-6;
   mutex_.AssertHeld();
   assert(imm_ != nullptr);
 
@@ -572,6 +573,8 @@ void DBImpl::CompactMemTable() {
   } else {
     RecordBackgroundError(s);
   }
+  double endTime = env_->NowMicros() * 1e-6;
+  std::fprintf(stdout, "CompactMemTable: %.2f - %.2f s\n", startTime, endTime);
 }
 
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
@@ -705,6 +708,7 @@ void DBImpl::BackgroundCompaction() {
   Compaction* c;
   bool is_manual = (manual_compaction_ != nullptr);
   InternalKey manual_end;
+  double startTime = env_->NowMicros() * 1e-6;
   if (is_manual) {
     ManualCompaction* m = manual_compaction_;
     c = versions_->CompactRange(m->level, m->begin, m->end);
@@ -750,6 +754,8 @@ void DBImpl::BackgroundCompaction() {
     c->ReleaseInputs();
     RemoveObsoleteFiles();
   }
+  double endTime = env_->NowMicros() * 1e-6;
+  std::fprintf(stdout, "Table Compaction Level-%d: %.2f - %.2f s\n", c->level(), startTime, endTime);
   delete c;
 
   if (status.ok()) {
@@ -1347,14 +1353,17 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // We have filled up the current memtable, but the previous
       // one is still being compacted, so we wait.
       Log(options_.info_log, "Current memtable full; waiting...\n");
+      std::fprintf(stdout, "Current memtable full at %.1f s\n", env_ -> NowMicros() * 1e-6);
       background_work_finished_signal_.Wait();
     } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
       // There are too many level-0 files.
       Log(options_.info_log, "Too many L0 files; waiting...\n");
+      std::fprintf(stdout, "Too many L0 files at %.1f s\n", env_ -> NowMicros() * 1e-6);
       background_work_finished_signal_.Wait();
     } else {
       // Attempt to switch to a new memtable and trigger compaction of old
       assert(versions_->PrevLogNumber() == 0);
+//      std::fprintf(stdout, "Attempt to switch to a new memtable at %.1f s\n", env_ -> NowMicros() * 1e-6);
       uint64_t new_log_number = versions_->NewFileNumber();
       WritableFile* lfile = nullptr;
       s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
