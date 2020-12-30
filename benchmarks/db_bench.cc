@@ -274,7 +274,7 @@ class Stats {
     std::fprintf(stdout, "%-12s : %11.3f micros/op;%s%s\n",
                  name.ToString().c_str(), seconds_ * 1e6 / done_,
                  (extra.empty() ? "" : " "), extra.c_str());
-    std::fprintf(stdout, "first time: %.1f s\n", start_ * 1e-6);
+    std::fprintf(stdout, "first time: %.2f s\n", start_ * 1e-6);
     if (FLAGS_histogram) {
       std::fprintf(stdout, "Microseconds per op:\n%s\n",
                    hist_.ToString().c_str());
@@ -655,7 +655,7 @@ class Benchmark {
         nowBytes += arg.threads[i].thread->stats.tempBytes_;
       }
       double now = g_env->NowMicros();
-      std::fprintf(stdout, "time: %.1f s %6.1f MB/s writer: %d\n", now * 1e-6,
+      std::fprintf(stdout, "time: %.2f s %6.1f MB/s writer: %d\n", now * 1e-6,
                    (nowBytes - lastBytes) / 1048576.0 / ((now - lastTime) * 1e-6),
                    arg.db -> GetWriterSize());
       lastTime = now;
@@ -663,7 +663,7 @@ class Benchmark {
       if (FLAGS_finsh_testing){
         break;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000 * 1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     std::cout << "exit countPerf" << std::endl;
     std::cout.flush();
