@@ -1342,6 +1342,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // this delay hands over some CPU to the compaction thread in
       // case it is sharing the same core as the writer.
       mutex_.Unlock();
+      std::fprintf(stdout, "sleep at %.2f s\n", env_ -> NowMicros() * 1e-6);
       env_->SleepForMicroseconds(1000);
       allow_delay = false;  // Do not delay a single write more than once
       mutex_.Lock();
